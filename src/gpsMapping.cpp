@@ -62,14 +62,34 @@
 #include <string>
 
 using namespace std; 
-using namespace message_filters; 
+using namespace message_filters;
+
+double startPoint[3] = {0,0,0};
+bool first_time = true;
+
+PointType pointSel;
+
+pcl::VoxelGrid<PointType> downSizeFilterCorner;
+
+
+pcl::VoxelGrid<PointType> downSizeFilterSurf;
+
+
+pcl::VoxelGrid<PointType> downSizeFilterMap;
+
 
 std::ofstream outFile_groundTruth;
+
+
+
+ros::Publisher pubLaserCloudSurround;
 
 const float scanPeriod = 0.1;
 
 const int stackFrameNum = 1;
-const int mapFrameNum = 5;
+const int mapFrameNum = 10;
+
+int mapFrameCount = mapFrameNum - 1;
 
 double timeLaserCloudCornerLast = 0;
 double timeLaserCloudSurfLast = 0;
@@ -176,69 +196,69 @@ bool systemInitiated=false;
 //   newLaserCloudSurfLast = true;
 // }
 
-void navSatFixHandler(const sensor_msgs::NavSatFix::ConstPtr &fixIn)
-{
-  timeNavSatFix = fixIn->header.stamp.toSec();
+// void navSatFixHandler(const sensor_msgs::NavSatFix::ConstPtr &fixIn)
+// {
+//   timeNavSatFix = fixIn->header.stamp.toSec();
 
-  static const double Ellipse_n = (Ellipse_a - Ellipse_b) / (Ellipse_a + Ellipse_b);
-  static const double Ellipse_e = sqrt(Ellipse_a * Ellipse_a - Ellipse_b * Ellipse_b) / Ellipse_a;
-  static const double Ellipse_ee = sqrt(Ellipse_a * Ellipse_a - Ellipse_b * Ellipse_b) / Ellipse_b;
-  static const double Ellipse_C0 = (Ellipse_a + Ellipse_b) * (1 + 0.25 * pow(Ellipse_n, 2) + 0.015625 * pow(Ellipse_n, 4)) * 0.5;
-  static const double Ellipse_C1 = -1.5 * Ellipse_n + 0.5625 * pow(Ellipse_n, 3) - 0.09375 * pow(Ellipse_n, 5);
-  static const double Ellipse_C2 = 0.9375 * pow(Ellipse_n, 2) - 0.46875 * pow(Ellipse_n, 4);
-  static const double Ellipse_C3 = -35 / 48 * pow(Ellipse_n, 3) + 0.41015625 * pow(Ellipse_n, 5);
-  static const double Ellipse_C4 = 0.615234375 * pow(Ellipse_n, 4);
+//   static const double Ellipse_n = (Ellipse_a - Ellipse_b) / (Ellipse_a + Ellipse_b);
+//   static const double Ellipse_e = sqrt(Ellipse_a * Ellipse_a - Ellipse_b * Ellipse_b) / Ellipse_a;
+//   static const double Ellipse_ee = sqrt(Ellipse_a * Ellipse_a - Ellipse_b * Ellipse_b) / Ellipse_b;
+//   static const double Ellipse_C0 = (Ellipse_a + Ellipse_b) * (1 + 0.25 * pow(Ellipse_n, 2) + 0.015625 * pow(Ellipse_n, 4)) * 0.5;
+//   static const double Ellipse_C1 = -1.5 * Ellipse_n + 0.5625 * pow(Ellipse_n, 3) - 0.09375 * pow(Ellipse_n, 5);
+//   static const double Ellipse_C2 = 0.9375 * pow(Ellipse_n, 2) - 0.46875 * pow(Ellipse_n, 4);
+//   static const double Ellipse_C3 = -35 / 48 * pow(Ellipse_n, 3) + 0.41015625 * pow(Ellipse_n, 5);
+//   static const double Ellipse_C4 = 0.615234375 * pow(Ellipse_n, 4);
 
-  double Ellipse_lat = fixIn->latitude * PI / 180;
-  double Ellipse_lon = (fixIn->longitude - Ellipse_L0) * PI / 180;
-  double Ellipse_N = Ellipse_a / sqrt(1 - pow(Ellipse_e * sin(Ellipse_lat), 2));
-  double Ellipse_t = tan(Ellipse_lat);
-  double Ellipse_g = Ellipse_ee * cos(Ellipse_lat);
-  double Ellipse_m = cos(Ellipse_lat) * Ellipse_lon;
+//   double Ellipse_lat = fixIn->latitude * PI / 180;
+//   double Ellipse_lon = (fixIn->longitude - Ellipse_L0) * PI / 180;
+//   double Ellipse_N = Ellipse_a / sqrt(1 - pow(Ellipse_e * sin(Ellipse_lat), 2));
+//   double Ellipse_t = tan(Ellipse_lat);
+//   double Ellipse_g = Ellipse_ee * cos(Ellipse_lat);
+//   double Ellipse_m = cos(Ellipse_lat) * Ellipse_lon;
 
-  double Ellipse_X = Ellipse_C0 * (Ellipse_lat + Ellipse_C1 * sin(2 * Ellipse_lat) + Ellipse_C2 * sin(4 * Ellipse_lat) + Ellipse_C3 * sin(6 * Ellipse_lat) + Ellipse_C4 * sin(8 * Ellipse_lat));
-  //--------------------------solution----------------------------------
+//   double Ellipse_X = Ellipse_C0 * (Ellipse_lat + Ellipse_C1 * sin(2 * Ellipse_lat) + Ellipse_C2 * sin(4 * Ellipse_lat) + Ellipse_C3 * sin(6 * Ellipse_lat) + Ellipse_C4 * sin(8 * Ellipse_lat));
+//   //--------------------------solution----------------------------------
 
-  double tempy = Ellipse_X + 0.5 * Ellipse_N * Ellipse_t * pow(Ellipse_m, 2);
-  tempy += 0.041666666666666666666666666667 * Ellipse_N * Ellipse_t * (5 - pow(Ellipse_t, 2) + 9 * pow(Ellipse_g, 2) + 4 * pow(Ellipse_g, 4)) * pow(Ellipse_m, 4);
-  tempy += 0.0013888888888888888888888888889 * Ellipse_N * Ellipse_t * (61 - 58 * pow(Ellipse_t, 2) + pow(Ellipse_t, 4) + 270 * pow(Ellipse_g, 2) - 330 * pow(Ellipse_g, 2) * pow(Ellipse_t, 2)) * pow(Ellipse_m, 6);
-  tempy += 0.0000248015873015873 * Ellipse_t * Ellipse_N * pow(Ellipse_m, 8) * (1385 - 3111 * pow(Ellipse_t, 2) + 543 * pow(Ellipse_t, 4) - pow(Ellipse_t, 6));
+//   double tempy = Ellipse_X + 0.5 * Ellipse_N * Ellipse_t * pow(Ellipse_m, 2);
+//   tempy += 0.041666666666666666666666666667 * Ellipse_N * Ellipse_t * (5 - pow(Ellipse_t, 2) + 9 * pow(Ellipse_g, 2) + 4 * pow(Ellipse_g, 4)) * pow(Ellipse_m, 4);
+//   tempy += 0.0013888888888888888888888888889 * Ellipse_N * Ellipse_t * (61 - 58 * pow(Ellipse_t, 2) + pow(Ellipse_t, 4) + 270 * pow(Ellipse_g, 2) - 330 * pow(Ellipse_g, 2) * pow(Ellipse_t, 2)) * pow(Ellipse_m, 6);
+//   tempy += 0.0000248015873015873 * Ellipse_t * Ellipse_N * pow(Ellipse_m, 8) * (1385 - 3111 * pow(Ellipse_t, 2) + 543 * pow(Ellipse_t, 4) - pow(Ellipse_t, 6));
 
-  double tempx = Ellipse_N * Ellipse_m + Ellipse_N * pow(Ellipse_m, 3) * (1 - pow(Ellipse_t, 2) + pow(Ellipse_g, 2)) * 0.16666666666666666666666666666666666667;
-  tempx += Ellipse_N * (5 - 18 * pow(Ellipse_t, 2) + pow(Ellipse_t, 4) + 14 * pow(Ellipse_g, 2) - 58 * pow(Ellipse_g, 2) * pow(Ellipse_t, 2)) * pow(Ellipse_m, 5) * 0.008333333333333333333333333333;
-  tempx += Ellipse_N * (61 - 479 * pow(Ellipse_t, 2) + 179 * pow(Ellipse_t, 4) - pow(Ellipse_t, 6)) * pow(Ellipse_m, 7) * 0.000198412698412698 + 500000;
+//   double tempx = Ellipse_N * Ellipse_m + Ellipse_N * pow(Ellipse_m, 3) * (1 - pow(Ellipse_t, 2) + pow(Ellipse_g, 2)) * 0.16666666666666666666666666666666666667;
+//   tempx += Ellipse_N * (5 - 18 * pow(Ellipse_t, 2) + pow(Ellipse_t, 4) + 14 * pow(Ellipse_g, 2) - 58 * pow(Ellipse_g, 2) * pow(Ellipse_t, 2)) * pow(Ellipse_m, 5) * 0.008333333333333333333333333333;
+//   tempx += Ellipse_N * (61 - 479 * pow(Ellipse_t, 2) + 179 * pow(Ellipse_t, 4) - pow(Ellipse_t, 6)) * pow(Ellipse_m, 7) * 0.000198412698412698 + 500000;
 
-  tempx = tempx * 100 - OriginX * 100; //cm
-  tempy = tempy * 100 - OriginY * 100; //cm
+//   tempx = tempx * 100 - OriginX * 100; //cm
+//   tempy = tempy * 100 - OriginY * 100; //cm
 
-  tempx += OffsetX * 100;
-  tempy += OffsetY * 100;
+//   tempx += OffsetX * 100;
+//   tempy += OffsetY * 100;
 
-  //coordinate[0]=fixIn->header.stamp;
-  coordinate[0] = (tempx) / 100.0;
-  coordinate[1] = (tempy) / 100.0;
-  coordinate[2] = fixIn->altitude;
+//   //coordinate[0]=fixIn->header.stamp;
+//   coordinate[0] = (tempx) / 100.0;
+//   coordinate[1] = (tempy) / 100.0;
+//   coordinate[2] = fixIn->altitude;
 
-  newNavSatFix = true;
-}
+//   newNavSatFix = true;
+// }
 
-void gl8GPTRAMsgHandler(const gps_mapping::GPTRA_MSG::ConstPtr &gl8GPTRAMsg)
-{
-  timeGL8GPTRAMsg = gl8GPTRAMsg->header.stamp.toSec();
+// void gl8GPTRAMsgHandler(const gps_mapping::GPTRA_MSG::ConstPtr &gl8GPTRAMsg)
+// {
+//   timeGL8GPTRAMsg = gl8GPTRAMsg->header.stamp.toSec();
 
-  coordinate[3]=gl8GPTRAMsg->heading;
+//   coordinate[3]=gl8GPTRAMsg->heading;
 
-  newGL8GPTRAMsg = true;
-}
+//   newGL8GPTRAMsg = true;
+// }
 
-void gl8HeadingMsgHandler(const gps_mapping::Heading::ConstPtr &gl8HeadingMsg)
-{
-  timeGL8HeadingMsg = gl8HeadingMsg->header.stamp.toSec();
+// void gl8HeadingMsgHandler(const gps_mapping::Heading::ConstPtr &gl8HeadingMsg)
+// {
+//   timeGL8HeadingMsg = gl8HeadingMsg->header.stamp.toSec();
 
-  coordinate[3]=gl8HeadingMsg->data;
+//   coordinate[3]=gl8HeadingMsg->data;
 
-  newGL8HeadingMsg = true;
-}
+//   newGL8HeadingMsg = true;
+// }
 
 void keyboardControlHandler(const std_msgs::String::ConstPtr &controlInfoIn)
 {
@@ -262,14 +282,14 @@ void keyboardControlHandler(const std_msgs::String::ConstPtr &controlInfoIn)
         {
           laserCloudCubeCorner->clear();
           *laserCloudCubeCorner = *laserCloudCornerArray[ind];
-          pcdCubeWriter.write("/home/zhou/Desktop/mapCubeData/corner/" + strI + "_" + strJ + "_" + strK + ".pcd", *laserCloudCubeCorner);
+          pcdCubeWriter.write("/home/zhibo/Desktop/mapCubeData/corner/" + strI + "_" + strJ + "_" + strK + ".pcd", *laserCloudCubeCorner);
         }
 
         if (isLaserCloudSurfExisted[ind])
         {
           laserCloudCubeSurf->clear();
           *laserCloudCubeSurf = *laserCloudSurfArray[ind];
-          pcdCubeWriter.write("/home/zhou/Desktop/mapCubeData/surf/" + strI + "_" + strJ + "_" + strK + ".pcd", *laserCloudCubeSurf);
+          pcdCubeWriter.write("/home/zhibo/Desktop/mapCubeData/surf/" + strI + "_" + strJ + "_" + strK + ".pcd", *laserCloudCubeSurf);
         }
       }
 
@@ -316,34 +336,34 @@ void callback(const sensor_msgs::ImuConstPtr &msg, const sensor_msgs::NavSatFixC
 	double x = gps->longitude;
 	double z = gps->altitude;
 	
-	projPJ pj_latlong, pj_utm;
-	if (!(pj_latlong = pj_init_plus("+proj=longlat +datum=WGS84")) )
-	{
-		printf("pj_init_plus error: longlat\n");
-		exit(1);
-   	}
-	if (!(pj_utm = pj_init_plus("+proj=utm +zone=51 +ellps=WGS84")) )
-	{
-		printf("pj_init_plus error: utm\n");
-		exit(1);
-	}
+	// projPJ pj_latlong, pj_utm;
+	// if (!(pj_latlong = pj_init_plus("+proj=longlat +datum=WGS84")) )
+	// {
+	// 	printf("pj_init_plus error: longlat\n");
+	// 	exit(1);
+  //  	}
+	// if (!(pj_utm = pj_init_plus("+proj=utm +zone=51 +ellps=WGS84")) )
+	// {
+	// 	printf("pj_init_plus error: utm\n");
+	// 	exit(1);
+	// }
 	
-	x *= DEG_TO_RAD;
-	y *= DEG_TO_RAD;
+	// x *= DEG_TO_RAD;
+	// y *= DEG_TO_RAD;
 	
-	int p = pj_transform(pj_latlong, pj_utm, 1, 1, &x, &y, NULL );
+	// int p = pj_transform(pj_latlong, pj_utm, 1, 1, &x, &y, NULL );
 
   if (first_time)
   {
-    origin[0] = x;
-    origin[1] = y;
-    origin[2] = z;
+    startPoint[0] = x;
+    startPoint[1] = y;
+    startPoint[2] = z;
     // cout << origin[0] - 351100 << " " << origin[1] - 3433000 << " " << origin[2] - 10 << endl;
     first_time = false;
   }
-  double x_live = x - origin[0];
-  double y_live = y - origin[1];
-	double z_live = z - origin[2];
+  double x_live = x - startPoint[0];
+  double y_live = y - startPoint[1];
+	double z_live = z - startPoint[2];
 
 	// outf<< (gps->header.stamp) <<" "<<yaw_live<< " "<<pitch_live<<" "<<roll_live<<" "<<x_live<<" "<<y_live<<" "<<z_live<<std::endl;
 	std::cout<< (gps->header.stamp) <<" "<<yaw_live<< " "<<pitch_live<<" "<<roll_live<<" "<<x_live<<" "<<y_live<<" "<<z_live<<std::endl;
@@ -735,6 +755,55 @@ void callback(const sensor_msgs::ImuConstPtr &msg, const sensor_msgs::NavSatFixC
 
 
 
+    // (降采样滤波????????)
+    for (int i = 0; i < laserCloudSurroundNum; i++)
+    {
+      int ind = laserCloudSurroundInd[i];
+
+      laserCloudCornerArray2[ind]->clear();
+      downSizeFilterCorner.setInputCloud(laserCloudCornerArray[ind]);
+      downSizeFilterCorner.filter(*laserCloudCornerArray2[ind]);
+
+      laserCloudSurfArray2[ind]->clear();
+      downSizeFilterSurf.setInputCloud(laserCloudSurfArray[ind]);
+      downSizeFilterSurf.filter(*laserCloudSurfArray2[ind]);
+
+      pcl::PointCloud<PointType>::Ptr laserCloudTemp = laserCloudCornerArray[ind];
+      laserCloudCornerArray[ind] = laserCloudCornerArray2[ind];
+      laserCloudCornerArray2[ind] = laserCloudTemp;
+
+      laserCloudTemp = laserCloudSurfArray[ind];
+      laserCloudSurfArray[ind] = laserCloudSurfArray2[ind];
+      laserCloudSurfArray2[ind] = laserCloudTemp;
+    }
+
+    // 发布频率为 5Hz。
+    mapFrameCount++;
+    if (mapFrameCount >= mapFrameNum)
+    {
+      mapFrameCount = 0;
+
+      std::cout<<"Publishing map cubes."<<std::endl;
+
+      laserCloudSurround2->clear();
+
+      for (int i = 0; i < laserCloudSurroundNum; i++)
+      {
+        int ind = laserCloudSurroundInd[i];
+        *laserCloudSurround2 += *laserCloudCornerArray[ind];
+        *laserCloudSurround2 += *laserCloudSurfArray[ind];
+      }
+
+      laserCloudSurround->clear();
+      downSizeFilterCorner.setInputCloud(laserCloudSurround2);
+      downSizeFilterCorner.filter(*laserCloudSurround);
+
+      sensor_msgs::PointCloud2 laserCloudSurround3;
+      pcl::toROSMsg(*laserCloudSurround, laserCloudSurround3);
+      laserCloudSurround3.header.stamp = gps->header.stamp;
+      laserCloudSurround3.header.frame_id = "camera_init";
+      pubLaserCloudSurround.publish(laserCloudSurround3);
+    }
 
 
 
@@ -746,16 +815,9 @@ int main(int argc, char **argv)
   ros::init(argc, argv, "gpsMapping");
   ros::NodeHandle nh;
 
-  PointType pointSel;
-
-  pcl::VoxelGrid<PointType> downSizeFilterCorner;
-  downSizeFilterCorner.setLeafSize(0.2, 0.2, 0.2);
-
-  pcl::VoxelGrid<PointType> downSizeFilterSurf;
-  downSizeFilterSurf.setLeafSize(0.4, 0.4, 0.4);
-
-  pcl::VoxelGrid<PointType> downSizeFilterMap;
-  downSizeFilterMap.setLeafSize(0.6, 0.6, 0.6);
+downSizeFilterCorner.setLeafSize(0.2, 0.2, 0.2);
+downSizeFilterSurf.setLeafSize(0.4, 0.4, 0.4);
+downSizeFilterMap.setLeafSize(0.6, 0.6, 0.6);
 
   outFile_groundTruth.open("/home/zhou/Desktop/test_groundtruth_gps.txt");
 
@@ -767,12 +829,13 @@ int main(int argc, char **argv)
     laserCloudSurfArray2[i].reset(new pcl::PointCloud<PointType>());
   }
 
-  int mapFrameCount = mapFrameNum - 1;
+ 
 
 
   ros::Subscriber subControlInfo = nh.subscribe<std_msgs::String>("controlInfo", 1000, keyboardControlHandler);
 
-  ros::Publisher pubLaserCloudSurround = nh.advertise<sensor_msgs::PointCloud2>("/laser_cloud_surround", 1);
+  pubLaserCloudSurround = nh.advertise<sensor_msgs::PointCloud2>("/laser_cloud_surround", 1);
+  std::cout<<"Laser_cloud_surround published."<<std::endl;
 
   message_filters::Subscriber<sensor_msgs::Imu> sub1(nh,"/Inertial/imu/data", 100);
 	message_filters::Subscriber<sensor_msgs::NavSatFix> sub2(nh,"/Inertial/gps/fix", 100);
@@ -785,514 +848,8 @@ int main(int argc, char **argv)
   Synchronizer<MySyncPolicy> sync(MySyncPolicy(1000), sub1, sub2, sub3, sub4); 
   sync.registerCallback(boost::bind(&callback, _1, _2, _3, _4));
 
-  ros::MultiThreadedSpinner spinner(4);
+  ros::MultiThreadedSpinner spinner(8);
   spinner.spin();
-
-  return 0;
-
-
-
-  while (status)
-  {
-    ros::spinOnce();
-
-    if (newLaserCloudCornerLast && newLaserCloudSurfLast  && newNavSatFix && newGL8GPTRAMsg &&
-        fabs(timeLaserCloudCornerLast - timeNavSatFix) < 0.05 &&
-        fabs(timeLaserCloudSurfLast - timeNavSatFix) < 0.05 &&
-        fabs(timeGL8GPTRAMsg - timeNavSatFix) < 0.05)
-    {
-      newLaserCloudCornerLast = false;
-      newLaserCloudSurfLast = false;
-      newNavSatFix = false;
-      newGL8GPTRAMsg = false;
-      //newGL8HeadingMsg = false;
-
-      if (!systemInitiated)
-      {
-        startPoint_x = coordinate[0];
-        startPoint_y = coordinate[1];
-        startPoint_z = coordinate[2];
-
-        startYaw = coordinate[3];
-
-        systemInitiated = true;
-      }
-
-      // 坐标变换
-      Eigen::Matrix4f transform = Eigen::Matrix4f::Identity();
-
-      transform(0, 0) = cos(coordinate[3]);
-      transform(0, 1) = -sin(coordinate[3]);
-      transform(1, 0) = sin(coordinate[3]);
-      transform(1, 1) = cos(coordinate[3]);
-
-      transform(0, 3) = coordinate[0]-startPoint_x;
-      transform(1, 3) = coordinate[1]-startPoint_y;
-      transform(2, 3) = coordinate[2]-startPoint_z;
-
-      double yawNow=coordinate[3];
-
-      
-
-
-      pcl::transformPointCloud(*laserCloudCornerLast, *laserCloudCornerLast, transform);
-      pcl::transformPointCloud(*laserCloudSurfLast, *laserCloudSurfLast, transform);
-
-      int laserCloudCornerLastNum = laserCloudCornerLast->points.size();
-      for (int i = 0; i < laserCloudCornerLastNum; i++)
-      {
-
-        pointSel = laserCloudCornerLast->points[i];
-        laserCloudCornerStack2->push_back(pointSel);
-      }
-
-      int laserCloudSurfLastNum = laserCloudSurfLast->points.size();
-      for (int i = 0; i < laserCloudSurfLastNum; i++)
-      {
-
-        pointSel = laserCloudSurfLast->points[i];
-        laserCloudSurfStack2->push_back(pointSel);
-      }
-
-      int centerCubeI = int((transform(0, 3) + 25.0) / 50.0) + laserCloudCenWidth;
-      int centerCubeJ = int((transform(1, 3) + 25.0) / 50.0) + laserCloudCenHeight;
-      int centerCubeK = int((transform(2, 3) + 25.0) / 50.0) + laserCloudCenDepth;
-
-      // Note: int(-0.1)=0;
-      if (transform(0, 3) + 25.0 < 0)
-        centerCubeI--;
-      if (transform(1, 3) + 25.0 < 0)
-        centerCubeJ--;
-      if (transform(2, 3) + 25.0 < 0)
-        centerCubeK--;
-
-      //std::cout<<centerCubeI<<'\t'<<centerCubeJ<<'\t'<<centerCubeK<<'\t'<<transformTobeMapped[3]<<'\n';
-
-      // 如果取到的子cube在整个大cube的边缘，则将点对应的cube的索引向中心方向挪动一个单位，这样做主要是截取边沿cube。
-      while (centerCubeI < 3)
-      {
-        for (int j = 0; j < laserCloudHeight; j++)
-        {
-          for (int k = 0; k < laserCloudDepth; k++)
-          {
-            int i = laserCloudWidth - 1;
-            pcl::PointCloud<PointType>::Ptr laserCloudCubeCornerPointer =
-                laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-            pcl::PointCloud<PointType>::Ptr laserCloudCubeSurfPointer =
-                laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-
-            bool tmpCornerExisted = isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-            bool tmpSurfExisted = isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-
-            for (; i >= 1; i--)
-            {
-              laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  laserCloudCornerArray[i - 1 + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-              laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  laserCloudSurfArray[i - 1 + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-
-              isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  isLaserCloudCornerExisted[i - 1 + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-              isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  isLaserCloudSurfExisted[i - 1 + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-            }
-            laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                laserCloudCubeCornerPointer;
-            laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                laserCloudCubeSurfPointer;
-            isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpCornerExisted;
-            isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpSurfExisted;
-
-            laserCloudCubeCornerPointer->clear();
-            laserCloudCubeSurfPointer->clear();
-          }
-        }
-
-        centerCubeI++;
-        laserCloudCenWidth++;
-      }
-
-      while (centerCubeI >= laserCloudWidth - 3)
-      {
-        for (int j = 0; j < laserCloudHeight; j++)
-        {
-          for (int k = 0; k < laserCloudDepth; k++)
-          {
-            int i = 0;
-            pcl::PointCloud<PointType>::Ptr laserCloudCubeCornerPointer =
-                laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-            pcl::PointCloud<PointType>::Ptr laserCloudCubeSurfPointer =
-                laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-
-            bool tmpCornerExisted = isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-            bool tmpSurfExisted = isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-
-            for (; i < laserCloudWidth - 1; i++)
-            {
-              laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  laserCloudCornerArray[i + 1 + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-              laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  laserCloudSurfArray[i + 1 + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-
-              isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  isLaserCloudCornerExisted[i + 1 + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-              isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  isLaserCloudSurfExisted[i + 1 + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-            }
-            laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                laserCloudCubeCornerPointer;
-            laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                laserCloudCubeSurfPointer;
-            isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpCornerExisted;
-            isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpSurfExisted;
-
-            laserCloudCubeCornerPointer->clear();
-            laserCloudCubeSurfPointer->clear();
-          }
-        }
-
-        centerCubeI--;
-        laserCloudCenWidth--;
-      }
-
-      while (centerCubeJ < 3)
-      {
-        for (int i = 0; i < laserCloudWidth; i++)
-        {
-          for (int k = 0; k < laserCloudDepth; k++)
-          {
-            int j = laserCloudHeight - 1;
-            pcl::PointCloud<PointType>::Ptr laserCloudCubeCornerPointer =
-                laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-            pcl::PointCloud<PointType>::Ptr laserCloudCubeSurfPointer =
-                laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-
-            bool tmpCornerExisted = isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-            bool tmpSurfExisted = isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-
-            for (; j >= 1; j--)
-            {
-              laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  laserCloudCornerArray[i + laserCloudWidth * (j - 1) + laserCloudWidth * laserCloudHeight * k];
-              laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  laserCloudSurfArray[i + laserCloudWidth * (j - 1) + laserCloudWidth * laserCloudHeight * k];
-
-              isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  isLaserCloudCornerExisted[i + laserCloudWidth * (j - 1) + laserCloudWidth * laserCloudHeight * k];
-              isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  isLaserCloudSurfExisted[i + laserCloudWidth * (j - 1) + laserCloudWidth * laserCloudHeight * k];
-            }
-            laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                laserCloudCubeCornerPointer;
-            laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                laserCloudCubeSurfPointer;
-
-            isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpCornerExisted;
-            isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpSurfExisted;
-
-            laserCloudCubeCornerPointer->clear();
-            laserCloudCubeSurfPointer->clear();
-          }
-        }
-
-        centerCubeJ++;
-        laserCloudCenHeight++;
-      }
-
-      while (centerCubeJ >= laserCloudHeight - 3)
-      {
-        for (int i = 0; i < laserCloudWidth; i++)
-        {
-          for (int k = 0; k < laserCloudDepth; k++)
-          {
-            int j = 0;
-            pcl::PointCloud<PointType>::Ptr laserCloudCubeCornerPointer =
-                laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-            pcl::PointCloud<PointType>::Ptr laserCloudCubeSurfPointer =
-                laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-
-            bool tmpCornerExisted = isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-            bool tmpSurfExisted = isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-
-            for (; j < laserCloudHeight - 1; j++)
-            {
-              laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  laserCloudCornerArray[i + laserCloudWidth * (j + 1) + laserCloudWidth * laserCloudHeight * k];
-              laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  laserCloudSurfArray[i + laserCloudWidth * (j + 1) + laserCloudWidth * laserCloudHeight * k];
-
-              isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  isLaserCloudCornerExisted[i + laserCloudWidth * (j + 1) + laserCloudWidth * laserCloudHeight * k];
-              isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  isLaserCloudSurfExisted[i + laserCloudWidth * (j + 1) + laserCloudWidth * laserCloudHeight * k];
-            }
-            laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                laserCloudCubeCornerPointer;
-            laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                laserCloudCubeSurfPointer;
-
-            isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpCornerExisted;
-            isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpSurfExisted;
-
-            laserCloudCubeCornerPointer->clear();
-            laserCloudCubeSurfPointer->clear();
-          }
-        }
-
-        centerCubeJ--;
-        laserCloudCenHeight--;
-      }
-
-      while (centerCubeK < 3)
-      {
-        for (int i = 0; i < laserCloudWidth; i++)
-        {
-          for (int j = 0; j < laserCloudHeight; j++)
-          {
-            int k = laserCloudDepth - 1;
-            pcl::PointCloud<PointType>::Ptr laserCloudCubeCornerPointer =
-                laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-            pcl::PointCloud<PointType>::Ptr laserCloudCubeSurfPointer =
-                laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-
-            bool tmpCornerExisted = isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-            bool tmpSurfExisted = isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-
-            for (; k >= 1; k--)
-            {
-              laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * (k - 1)];
-              laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * (k - 1)];
-
-              isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * (k - 1)];
-              isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * (k - 1)];
-            }
-            laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                laserCloudCubeCornerPointer;
-            laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                laserCloudCubeSurfPointer;
-
-            isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpCornerExisted;
-            isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpSurfExisted;
-
-            laserCloudCubeCornerPointer->clear();
-            laserCloudCubeSurfPointer->clear();
-          }
-        }
-
-        centerCubeK++;
-        laserCloudCenDepth++;
-      }
-
-      while (centerCubeK >= laserCloudDepth - 3)
-      {
-        for (int i = 0; i < laserCloudWidth; i++)
-        {
-          for (int j = 0; j < laserCloudHeight; j++)
-          {
-            int k = 0;
-            pcl::PointCloud<PointType>::Ptr laserCloudCubeCornerPointer =
-                laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-            pcl::PointCloud<PointType>::Ptr laserCloudCubeSurfPointer =
-                laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-
-            bool tmpCornerExisted = isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-            bool tmpSurfExisted = isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
-
-            for (; k < laserCloudDepth - 1; k++)
-            {
-              laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * (k + 1)];
-              laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * (k + 1)];
-
-              isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * (k + 1)];
-              isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                  isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * (k + 1)];
-            }
-            laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                laserCloudCubeCornerPointer;
-            laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
-                laserCloudCubeSurfPointer;
-
-            isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpCornerExisted;
-            isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpSurfExisted;
-
-            laserCloudCubeCornerPointer->clear();
-            laserCloudCubeSurfPointer->clear();
-          }
-        }
-
-        centerCubeK--;
-        laserCloudCenDepth--;
-      }
-
-      int laserCloudSurroundNum = 0;
-      for (int i = centerCubeI - 2; i <= centerCubeI + 2; i++)
-      {
-        for (int j = centerCubeJ - 2; j <= centerCubeJ + 2; j++)
-        {
-          for (int k = centerCubeK - 2; k <= centerCubeK + 2; k++)
-          {
-            if (i >= 0 && i < laserCloudWidth &&
-                j >= 0 && j < laserCloudHeight &&
-                k >= 0 && k < laserCloudDepth)
-            {
-              laserCloudSurroundInd[laserCloudSurroundNum] = i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k;
-              laserCloudSurroundNum++;
-            }
-          }
-        }
-      }
-
-
-
-        ////////////////////////////////////////////////////////////
-        laserCloudCornerStack->clear();
-        downSizeFilterCorner.setInputCloud(laserCloudCornerStack2);
-        downSizeFilterCorner.filter(*laserCloudCornerStack);
-        int laserCloudCornerStackNum = laserCloudCornerStack->points.size();
-
-        laserCloudSurfStack->clear();
-        downSizeFilterSurf.setInputCloud(laserCloudSurfStack2);
-        downSizeFilterSurf.filter(*laserCloudSurfStack);
-        int laserCloudSurfStackNum = laserCloudSurfStack->points.size();
-
-        laserCloudCornerStack2->clear();
-        laserCloudSurfStack2->clear();
-        ////////////////////////////////////////////////////////////
-
-
-
-        //==============================================================//
-        //laserCloudCornerStack是当前帧的坐标，pointAssociateToMap函数后的pointSel坐标是全局地图坐标。
-        for (int i = 0; i < laserCloudCornerStackNum; i++)
-        {
-          pointSel = laserCloudCornerStack->points[i];
-
-          int cubeI = int((pointSel.x + 25.0) / 50.0) + laserCloudCenWidth;
-          int cubeJ = int((pointSel.y + 25.0) / 50.0) + laserCloudCenHeight;
-          int cubeK = int((pointSel.z + 25.0) / 50.0) + laserCloudCenDepth;
-
-          if (pointSel.x + 25.0 < 0)
-            cubeI--;
-          if (pointSel.y + 25.0 < 0)
-            cubeJ--;
-          if (pointSel.z + 25.0 < 0)
-            cubeK--;
-
-          if (cubeI >= 0 && cubeI < laserCloudWidth &&
-              cubeJ >= 0 && cubeJ < laserCloudHeight &&
-              cubeK >= 0 && cubeK < laserCloudDepth)
-          {
-            int cubeInd = cubeI + laserCloudWidth * cubeJ + laserCloudWidth * laserCloudHeight * cubeK;
-            laserCloudCornerArray[cubeInd]->push_back(pointSel);
-            isLaserCloudCornerExisted[cubeInd] = true;
-          }
-        }
-
-        for (int i = 0; i < laserCloudSurfStackNum; i++)
-        {
-          pointSel=laserCloudSurfStack->points[i];
-
-          int cubeI = int((pointSel.x + 25.0) / 50.0) + laserCloudCenWidth;
-          int cubeJ = int((pointSel.y + 25.0) / 50.0) + laserCloudCenHeight;
-          int cubeK = int((pointSel.z + 25.0) / 50.0) + laserCloudCenDepth;
-
-          if (pointSel.x + 25.0 < 0)
-            cubeI--;
-          if (pointSel.y + 25.0 < 0)
-            cubeJ--;
-          if (pointSel.z + 25.0 < 0)
-            cubeK--;
-
-          if (cubeI >= 0 && cubeI < laserCloudWidth &&
-              cubeJ >= 0 && cubeJ < laserCloudHeight &&
-              cubeK >= 0 && cubeK < laserCloudDepth)
-          {
-            int cubeInd = cubeI + laserCloudWidth * cubeJ + laserCloudWidth * laserCloudHeight * cubeK;
-            laserCloudSurfArray[cubeInd]->push_back(pointSel);
-            isLaserCloudSurfExisted[cubeInd]=true;
-          }
-        }
-        //==============================================================//
-
-        // (降采样滤波????????)
-        for (int i = 0; i < laserCloudSurroundNum; i++)
-        {
-          int ind = laserCloudSurroundInd[i];
-
-          laserCloudCornerArray2[ind]->clear();
-          downSizeFilterCorner.setInputCloud(laserCloudCornerArray[ind]);
-          downSizeFilterCorner.filter(*laserCloudCornerArray2[ind]);
-
-          laserCloudSurfArray2[ind]->clear();
-          downSizeFilterSurf.setInputCloud(laserCloudSurfArray[ind]);
-          downSizeFilterSurf.filter(*laserCloudSurfArray2[ind]);
-
-          pcl::PointCloud<PointType>::Ptr laserCloudTemp = laserCloudCornerArray[ind];
-          laserCloudCornerArray[ind] = laserCloudCornerArray2[ind];
-          laserCloudCornerArray2[ind] = laserCloudTemp;
-
-          laserCloudTemp = laserCloudSurfArray[ind];
-          laserCloudSurfArray[ind] = laserCloudSurfArray2[ind];
-          laserCloudSurfArray2[ind] = laserCloudTemp;
-        }
-
-
-        // 发布频率为 5Hz。
-        mapFrameCount++;
-        if (mapFrameCount >= mapFrameNum)
-        {
-          mapFrameCount = 0;
-
-          laserCloudSurround2->clear();
-
-          for (int i = 0; i < laserCloudSurroundNum; i++)
-          {
-            int ind = laserCloudSurroundInd[i];
-            *laserCloudSurround2 += *laserCloudCornerArray[ind];
-            *laserCloudSurround2 += *laserCloudSurfArray[ind];
-
-          }
-          
-          laserCloudSurround->clear();
-          downSizeFilterCorner.setInputCloud(laserCloudSurround2);
-          downSizeFilterCorner.filter(*laserCloudSurround);
-
-          sensor_msgs::PointCloud2 laserCloudSurround3;
-          pcl::toROSMsg(*laserCloudSurround, laserCloudSurround3);
-          laserCloudSurround3.header.stamp = ros::Time().fromSec(timeNavSatFix);
-          laserCloudSurround3.header.frame_id = "camera_init";
-          pubLaserCloudSurround.publish(laserCloudSurround3);
-
-        }
-
-
-
-        outFile_groundTruth << std::fixed << std::setprecision(12) << timeNavSatFix << '\t' << transform(0, 3) << '\t' << transform(1, 3)<< '\t' << transform(2, 3)<< '\t' << yawNow<< std::endl;
-
-
-        // aftMappedTrans.stamp_ = ros::Time().fromSec(timeLaserOdometry);
-        // aftMappedTrans.setRotation(tf::Quaternion(-geoQuat.y, -geoQuat.z, geoQuat.x, geoQuat.w));
-        // aftMappedTrans.setOrigin(tf::Vector3(transformAftMapped[3],
-        //                                      transformAftMapped[4], transformAftMapped[5]));
-        // tfBroadcaster.sendTransform(aftMappedTrans);
-
-        ///Write data to file.
-
-        // outfile << odomAftMapped.pose.pose.position.x << '\t' << odomAftMapped.pose.pose.position.y << '\t' << odomAftMapped.pose.pose.position.z << '\n';
-
-      
-    }
-
-    status = ros::ok();
-    rate.sleep();
-  }
 
   outFile_groundTruth.close();
 
@@ -1304,3 +861,490 @@ int main(int argc, char **argv)
 
   return 0;
 }
+
+// while (status)
+// {
+//   ros::spinOnce();
+
+//   if (newLaserCloudCornerLast && newLaserCloudSurfLast && newNavSatFix && newGL8GPTRAMsg &&
+//       fabs(timeLaserCloudCornerLast - timeNavSatFix) < 0.05 &&
+//       fabs(timeLaserCloudSurfLast - timeNavSatFix) < 0.05 &&
+//       fabs(timeGL8GPTRAMsg - timeNavSatFix) < 0.05)
+//   {
+//     newLaserCloudCornerLast = false;
+//     newLaserCloudSurfLast = false;
+//     newNavSatFix = false;
+//     newGL8GPTRAMsg = false;
+//     //newGL8HeadingMsg = false;
+
+//     if (!systemInitiated)
+//     {
+//       startPoint_x = coordinate[0];
+//       startPoint_y = coordinate[1];
+//       startPoint_z = coordinate[2];
+
+//       startYaw = coordinate[3];
+
+//       systemInitiated = true;
+//     }
+
+//     // 坐标变换
+//     Eigen::Matrix4f transform = Eigen::Matrix4f::Identity();
+
+//     transform(0, 0) = cos(coordinate[3]);
+//     transform(0, 1) = -sin(coordinate[3]);
+//     transform(1, 0) = sin(coordinate[3]);
+//     transform(1, 1) = cos(coordinate[3]);
+
+//     transform(0, 3) = coordinate[0] - startPoint_x;
+//     transform(1, 3) = coordinate[1] - startPoint_y;
+//     transform(2, 3) = coordinate[2] - startPoint_z;
+
+//     double yawNow = coordinate[3];
+
+//     pcl::transformPointCloud(*laserCloudCornerLast, *laserCloudCornerLast, transform);
+//     pcl::transformPointCloud(*laserCloudSurfLast, *laserCloudSurfLast, transform);
+
+//     int laserCloudCornerLastNum = laserCloudCornerLast->points.size();
+//     for (int i = 0; i < laserCloudCornerLastNum; i++)
+//     {
+
+//       pointSel = laserCloudCornerLast->points[i];
+//       laserCloudCornerStack2->push_back(pointSel);
+//     }
+
+//     int laserCloudSurfLastNum = laserCloudSurfLast->points.size();
+//     for (int i = 0; i < laserCloudSurfLastNum; i++)
+//     {
+
+//       pointSel = laserCloudSurfLast->points[i];
+//       laserCloudSurfStack2->push_back(pointSel);
+//     }
+
+//     int centerCubeI = int((transform(0, 3) + 25.0) / 50.0) + laserCloudCenWidth;
+//     int centerCubeJ = int((transform(1, 3) + 25.0) / 50.0) + laserCloudCenHeight;
+//     int centerCubeK = int((transform(2, 3) + 25.0) / 50.0) + laserCloudCenDepth;
+
+//     // Note: int(-0.1)=0;
+//     if (transform(0, 3) + 25.0 < 0)
+//       centerCubeI--;
+//     if (transform(1, 3) + 25.0 < 0)
+//       centerCubeJ--;
+//     if (transform(2, 3) + 25.0 < 0)
+//       centerCubeK--;
+
+//     //std::cout<<centerCubeI<<'\t'<<centerCubeJ<<'\t'<<centerCubeK<<'\t'<<transformTobeMapped[3]<<'\n';
+
+//     // 如果取到的子cube在整个大cube的边缘，则将点对应的cube的索引向中心方向挪动一个单位，这样做主要是截取边沿cube。
+//     while (centerCubeI < 3)
+//     {
+//       for (int j = 0; j < laserCloudHeight; j++)
+//       {
+//         for (int k = 0; k < laserCloudDepth; k++)
+//         {
+//           int i = laserCloudWidth - 1;
+//           pcl::PointCloud<PointType>::Ptr laserCloudCubeCornerPointer =
+//               laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+//           pcl::PointCloud<PointType>::Ptr laserCloudCubeSurfPointer =
+//               laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+
+//           bool tmpCornerExisted = isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+//           bool tmpSurfExisted = isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+
+//           for (; i >= 1; i--)
+//           {
+//             laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 laserCloudCornerArray[i - 1 + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+//             laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 laserCloudSurfArray[i - 1 + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+
+//             isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 isLaserCloudCornerExisted[i - 1 + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+//             isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 isLaserCloudSurfExisted[i - 1 + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+//           }
+//           laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//               laserCloudCubeCornerPointer;
+//           laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//               laserCloudCubeSurfPointer;
+//           isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpCornerExisted;
+//           isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpSurfExisted;
+
+//           laserCloudCubeCornerPointer->clear();
+//           laserCloudCubeSurfPointer->clear();
+//         }
+//       }
+
+//       centerCubeI++;
+//       laserCloudCenWidth++;
+//     }
+
+//     while (centerCubeI >= laserCloudWidth - 3)
+//     {
+//       for (int j = 0; j < laserCloudHeight; j++)
+//       {
+//         for (int k = 0; k < laserCloudDepth; k++)
+//         {
+//           int i = 0;
+//           pcl::PointCloud<PointType>::Ptr laserCloudCubeCornerPointer =
+//               laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+//           pcl::PointCloud<PointType>::Ptr laserCloudCubeSurfPointer =
+//               laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+
+//           bool tmpCornerExisted = isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+//           bool tmpSurfExisted = isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+
+//           for (; i < laserCloudWidth - 1; i++)
+//           {
+//             laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 laserCloudCornerArray[i + 1 + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+//             laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 laserCloudSurfArray[i + 1 + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+
+//             isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 isLaserCloudCornerExisted[i + 1 + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+//             isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 isLaserCloudSurfExisted[i + 1 + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+//           }
+//           laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//               laserCloudCubeCornerPointer;
+//           laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//               laserCloudCubeSurfPointer;
+//           isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpCornerExisted;
+//           isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpSurfExisted;
+
+//           laserCloudCubeCornerPointer->clear();
+//           laserCloudCubeSurfPointer->clear();
+//         }
+//       }
+
+//       centerCubeI--;
+//       laserCloudCenWidth--;
+//     }
+
+//     while (centerCubeJ < 3)
+//     {
+//       for (int i = 0; i < laserCloudWidth; i++)
+//       {
+//         for (int k = 0; k < laserCloudDepth; k++)
+//         {
+//           int j = laserCloudHeight - 1;
+//           pcl::PointCloud<PointType>::Ptr laserCloudCubeCornerPointer =
+//               laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+//           pcl::PointCloud<PointType>::Ptr laserCloudCubeSurfPointer =
+//               laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+
+//           bool tmpCornerExisted = isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+//           bool tmpSurfExisted = isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+
+//           for (; j >= 1; j--)
+//           {
+//             laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 laserCloudCornerArray[i + laserCloudWidth * (j - 1) + laserCloudWidth * laserCloudHeight * k];
+//             laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 laserCloudSurfArray[i + laserCloudWidth * (j - 1) + laserCloudWidth * laserCloudHeight * k];
+
+//             isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 isLaserCloudCornerExisted[i + laserCloudWidth * (j - 1) + laserCloudWidth * laserCloudHeight * k];
+//             isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 isLaserCloudSurfExisted[i + laserCloudWidth * (j - 1) + laserCloudWidth * laserCloudHeight * k];
+//           }
+//           laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//               laserCloudCubeCornerPointer;
+//           laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//               laserCloudCubeSurfPointer;
+
+//           isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpCornerExisted;
+//           isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpSurfExisted;
+
+//           laserCloudCubeCornerPointer->clear();
+//           laserCloudCubeSurfPointer->clear();
+//         }
+//       }
+
+//       centerCubeJ++;
+//       laserCloudCenHeight++;
+//     }
+
+//     while (centerCubeJ >= laserCloudHeight - 3)
+//     {
+//       for (int i = 0; i < laserCloudWidth; i++)
+//       {
+//         for (int k = 0; k < laserCloudDepth; k++)
+//         {
+//           int j = 0;
+//           pcl::PointCloud<PointType>::Ptr laserCloudCubeCornerPointer =
+//               laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+//           pcl::PointCloud<PointType>::Ptr laserCloudCubeSurfPointer =
+//               laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+
+//           bool tmpCornerExisted = isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+//           bool tmpSurfExisted = isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+
+//           for (; j < laserCloudHeight - 1; j++)
+//           {
+//             laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 laserCloudCornerArray[i + laserCloudWidth * (j + 1) + laserCloudWidth * laserCloudHeight * k];
+//             laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 laserCloudSurfArray[i + laserCloudWidth * (j + 1) + laserCloudWidth * laserCloudHeight * k];
+
+//             isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 isLaserCloudCornerExisted[i + laserCloudWidth * (j + 1) + laserCloudWidth * laserCloudHeight * k];
+//             isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 isLaserCloudSurfExisted[i + laserCloudWidth * (j + 1) + laserCloudWidth * laserCloudHeight * k];
+//           }
+//           laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//               laserCloudCubeCornerPointer;
+//           laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//               laserCloudCubeSurfPointer;
+
+//           isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpCornerExisted;
+//           isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpSurfExisted;
+
+//           laserCloudCubeCornerPointer->clear();
+//           laserCloudCubeSurfPointer->clear();
+//         }
+//       }
+
+//       centerCubeJ--;
+//       laserCloudCenHeight--;
+//     }
+
+//     while (centerCubeK < 3)
+//     {
+//       for (int i = 0; i < laserCloudWidth; i++)
+//       {
+//         for (int j = 0; j < laserCloudHeight; j++)
+//         {
+//           int k = laserCloudDepth - 1;
+//           pcl::PointCloud<PointType>::Ptr laserCloudCubeCornerPointer =
+//               laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+//           pcl::PointCloud<PointType>::Ptr laserCloudCubeSurfPointer =
+//               laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+
+//           bool tmpCornerExisted = isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+//           bool tmpSurfExisted = isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+
+//           for (; k >= 1; k--)
+//           {
+//             laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * (k - 1)];
+//             laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * (k - 1)];
+
+//             isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * (k - 1)];
+//             isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * (k - 1)];
+//           }
+//           laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//               laserCloudCubeCornerPointer;
+//           laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//               laserCloudCubeSurfPointer;
+
+//           isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpCornerExisted;
+//           isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpSurfExisted;
+
+//           laserCloudCubeCornerPointer->clear();
+//           laserCloudCubeSurfPointer->clear();
+//         }
+//       }
+
+//       centerCubeK++;
+//       laserCloudCenDepth++;
+//     }
+
+//     while (centerCubeK >= laserCloudDepth - 3)
+//     {
+//       for (int i = 0; i < laserCloudWidth; i++)
+//       {
+//         for (int j = 0; j < laserCloudHeight; j++)
+//         {
+//           int k = 0;
+//           pcl::PointCloud<PointType>::Ptr laserCloudCubeCornerPointer =
+//               laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+//           pcl::PointCloud<PointType>::Ptr laserCloudCubeSurfPointer =
+//               laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+
+//           bool tmpCornerExisted = isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+//           bool tmpSurfExisted = isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k];
+
+//           for (; k < laserCloudDepth - 1; k++)
+//           {
+//             laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * (k + 1)];
+//             laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * (k + 1)];
+
+//             isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * (k + 1)];
+//             isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//                 isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * (k + 1)];
+//           }
+//           laserCloudCornerArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//               laserCloudCubeCornerPointer;
+//           laserCloudSurfArray[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] =
+//               laserCloudCubeSurfPointer;
+
+//           isLaserCloudCornerExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpCornerExisted;
+//           isLaserCloudSurfExisted[i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k] = tmpSurfExisted;
+
+//           laserCloudCubeCornerPointer->clear();
+//           laserCloudCubeSurfPointer->clear();
+//         }
+//       }
+
+//       centerCubeK--;
+//       laserCloudCenDepth--;
+//     }
+
+//     int laserCloudSurroundNum = 0;
+//     for (int i = centerCubeI - 2; i <= centerCubeI + 2; i++)
+//     {
+//       for (int j = centerCubeJ - 2; j <= centerCubeJ + 2; j++)
+//       {
+//         for (int k = centerCubeK - 2; k <= centerCubeK + 2; k++)
+//         {
+//           if (i >= 0 && i < laserCloudWidth &&
+//               j >= 0 && j < laserCloudHeight &&
+//               k >= 0 && k < laserCloudDepth)
+//           {
+//             laserCloudSurroundInd[laserCloudSurroundNum] = i + laserCloudWidth * j + laserCloudWidth * laserCloudHeight * k;
+//             laserCloudSurroundNum++;
+//           }
+//         }
+//       }
+//     }
+
+//     ////////////////////////////////////////////////////////////
+//     laserCloudCornerStack->clear();
+//     downSizeFilterCorner.setInputCloud(laserCloudCornerStack2);
+//     downSizeFilterCorner.filter(*laserCloudCornerStack);
+//     int laserCloudCornerStackNum = laserCloudCornerStack->points.size();
+
+//     laserCloudSurfStack->clear();
+//     downSizeFilterSurf.setInputCloud(laserCloudSurfStack2);
+//     downSizeFilterSurf.filter(*laserCloudSurfStack);
+//     int laserCloudSurfStackNum = laserCloudSurfStack->points.size();
+
+//     laserCloudCornerStack2->clear();
+//     laserCloudSurfStack2->clear();
+//     ////////////////////////////////////////////////////////////
+
+//     //==============================================================//
+//     //laserCloudCornerStack是当前帧的坐标，pointAssociateToMap函数后的pointSel坐标是全局地图坐标。
+//     for (int i = 0; i < laserCloudCornerStackNum; i++)
+//     {
+//       pointSel = laserCloudCornerStack->points[i];
+
+//       int cubeI = int((pointSel.x + 25.0) / 50.0) + laserCloudCenWidth;
+//       int cubeJ = int((pointSel.y + 25.0) / 50.0) + laserCloudCenHeight;
+//       int cubeK = int((pointSel.z + 25.0) / 50.0) + laserCloudCenDepth;
+
+//       if (pointSel.x + 25.0 < 0)
+//         cubeI--;
+//       if (pointSel.y + 25.0 < 0)
+//         cubeJ--;
+//       if (pointSel.z + 25.0 < 0)
+//         cubeK--;
+
+//       if (cubeI >= 0 && cubeI < laserCloudWidth &&
+//           cubeJ >= 0 && cubeJ < laserCloudHeight &&
+//           cubeK >= 0 && cubeK < laserCloudDepth)
+//       {
+//         int cubeInd = cubeI + laserCloudWidth * cubeJ + laserCloudWidth * laserCloudHeight * cubeK;
+//         laserCloudCornerArray[cubeInd]->push_back(pointSel);
+//         isLaserCloudCornerExisted[cubeInd] = true;
+//       }
+//     }
+
+//     for (int i = 0; i < laserCloudSurfStackNum; i++)
+//     {
+//       pointSel = laserCloudSurfStack->points[i];
+
+//       int cubeI = int((pointSel.x + 25.0) / 50.0) + laserCloudCenWidth;
+//       int cubeJ = int((pointSel.y + 25.0) / 50.0) + laserCloudCenHeight;
+//       int cubeK = int((pointSel.z + 25.0) / 50.0) + laserCloudCenDepth;
+
+//       if (pointSel.x + 25.0 < 0)
+//         cubeI--;
+//       if (pointSel.y + 25.0 < 0)
+//         cubeJ--;
+//       if (pointSel.z + 25.0 < 0)
+//         cubeK--;
+
+//       if (cubeI >= 0 && cubeI < laserCloudWidth &&
+//           cubeJ >= 0 && cubeJ < laserCloudHeight &&
+//           cubeK >= 0 && cubeK < laserCloudDepth)
+//       {
+//         int cubeInd = cubeI + laserCloudWidth * cubeJ + laserCloudWidth * laserCloudHeight * cubeK;
+//         laserCloudSurfArray[cubeInd]->push_back(pointSel);
+//         isLaserCloudSurfExisted[cubeInd] = true;
+//       }
+//     }
+//     //==============================================================//
+
+//     // (降采样滤波????????)
+//     for (int i = 0; i < laserCloudSurroundNum; i++)
+//     {
+//       int ind = laserCloudSurroundInd[i];
+
+//       laserCloudCornerArray2[ind]->clear();
+//       downSizeFilterCorner.setInputCloud(laserCloudCornerArray[ind]);
+//       downSizeFilterCorner.filter(*laserCloudCornerArray2[ind]);
+
+//       laserCloudSurfArray2[ind]->clear();
+//       downSizeFilterSurf.setInputCloud(laserCloudSurfArray[ind]);
+//       downSizeFilterSurf.filter(*laserCloudSurfArray2[ind]);
+
+//       pcl::PointCloud<PointType>::Ptr laserCloudTemp = laserCloudCornerArray[ind];
+//       laserCloudCornerArray[ind] = laserCloudCornerArray2[ind];
+//       laserCloudCornerArray2[ind] = laserCloudTemp;
+
+//       laserCloudTemp = laserCloudSurfArray[ind];
+//       laserCloudSurfArray[ind] = laserCloudSurfArray2[ind];
+//       laserCloudSurfArray2[ind] = laserCloudTemp;
+//     }
+
+//     // 发布频率为 5Hz。
+//     mapFrameCount++;
+//     if (mapFrameCount >= mapFrameNum)
+//     {
+//       mapFrameCount = 0;
+
+//       laserCloudSurround2->clear();
+
+//       for (int i = 0; i < laserCloudSurroundNum; i++)
+//       {
+//         int ind = laserCloudSurroundInd[i];
+//         *laserCloudSurround2 += *laserCloudCornerArray[ind];
+//         *laserCloudSurround2 += *laserCloudSurfArray[ind];
+//       }
+
+//       laserCloudSurround->clear();
+//       downSizeFilterCorner.setInputCloud(laserCloudSurround2);
+//       downSizeFilterCorner.filter(*laserCloudSurround);
+
+//       sensor_msgs::PointCloud2 laserCloudSurround3;
+//       pcl::toROSMsg(*laserCloudSurround, laserCloudSurround3);
+//       laserCloudSurround3.header.stamp = ros::Time().fromSec(timeNavSatFix);
+//       laserCloudSurround3.header.frame_id = "camera_init";
+//       pubLaserCloudSurround.publish(laserCloudSurround3);
+//     }
+
+//     outFile_groundTruth << std::fixed << std::setprecision(12) << timeNavSatFix << '\t' << transform(0, 3) << '\t' << transform(1, 3) << '\t' << transform(2, 3) << '\t' << yawNow << std::endl;
+
+//     // aftMappedTrans.stamp_ = ros::Time().fromSec(timeLaserOdometry);
+//     // aftMappedTrans.setRotation(tf::Quaternion(-geoQuat.y, -geoQuat.z, geoQuat.x, geoQuat.w));
+//     // aftMappedTrans.setOrigin(tf::Vector3(transformAftMapped[3],
+//     //                                      transformAftMapped[4], transformAftMapped[5]));
+//     // tfBroadcaster.sendTransform(aftMappedTrans);
+
+//     ///Write data to file.
+
+//     // outfile << odomAftMapped.pose.pose.position.x << '\t' << odomAftMapped.pose.pose.position.y << '\t' << odomAftMapped.pose.pose.position.z << '\n';
+//   }
+
+//   status = ros::ok();
+//   rate.sleep();
+// }

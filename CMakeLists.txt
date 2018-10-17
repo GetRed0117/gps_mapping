@@ -3,6 +3,7 @@ project(gps_mapping)
 
 find_package(catkin REQUIRED COMPONENTS
   message_generation
+  message_filters
   geometry_msgs
   nav_msgs
   sensor_msgs
@@ -37,7 +38,7 @@ link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 
 catkin_package(
-  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs message_runtime
+  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs message_runtime message_filters
   DEPENDS EIGEN3 PCL OpenCV
   INCLUDE_DIRS include
 )
