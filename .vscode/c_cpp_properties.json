@@ -1,0 +1,30 @@
+{
+    "configurations": [
+        {
+            "browse": {
+                "databaseFilename": "",
+                "limitSymbolsToIncludedHeaders": true
+            },
+            "includePath": [
+                "/home/zhibo/ROS_workspaces/catkin_ws/devel/include",
+                "/opt/ros/kinetic/include",
+                "/home/zhibo/ROS_workspaces/catkin_ws/src/gl8_common/gl8_math/include",
+                "/home/zhibo/ROS_workspaces/catkin_ws/src/gl8_common/gl8_utils/include",
+                "/home/zhibo/ROS_workspaces/catkin_ws/src/gl8_common/gl8_vis/include",
+                "/home/zhibo/ROS_workspaces/catkin_ws/src/gps_mapping/include",
+                "/home/zhibo/ROS_workspaces/catkin_ws/src/gpsimu/include",
+                "/home/zhibo/ROS_workspaces/catkin_ws/src/laser_scan_correction/include",
+                "/home/zhibo/ROS_workspaces/catkin_ws/src/gl8_common/traffic_object/include",
+                "/usr/include",
+                "/usr/include/pcl-1.7",
+                "/usr/include/eigen3"
+            ],
+            "name": "Linux",
+            "intelliSenseMode": "gcc-x64",
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c11",
+            "cppStandard": "c++17"
+        }
+    ],
+    "version": 4
+}

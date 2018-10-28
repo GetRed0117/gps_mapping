@@ -54,6 +54,7 @@ target_link_libraries(scanRegistration2 ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${O
 
 add_executable(gpsMapping src/gpsMapping.cpp)
 target_link_libraries(gpsMapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBS})
+target_link_libraries(gpsMapping ${PROJ_LIBRARIES}/usr/lib/x86_64-linux-gnu/libproj.so)
 
 # add_executable(transformMaintenance src/transformMaintenance.cpp)
 # target_link_libraries(transformMaintenance ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBS})

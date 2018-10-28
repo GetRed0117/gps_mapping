@@ -11,5 +11,10 @@
         "typeinfo": "cpp",
         "algorithm": "cpp",
         "__locale": "cpp"
-    }
+    },
+    "C_Cpp.intelliSenseEngineFallback": "Disabled",
+    "python.autoComplete.extraPaths": [
+        "/home/zhibo/ROS_workspaces/catkin_ws/devel/lib/python2.7/dist-packages",
+        "/opt/ros/kinetic/lib/python2.7/dist-packages"
+    ]
 }

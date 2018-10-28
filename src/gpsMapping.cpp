@@ -54,33 +54,28 @@
 #include "std_msgs/String.h"
 
 #include <message_filters/time_synchronizer.h>
-#include <message_filters/sync_policies/approximate_time.h> 
-#include <message_filters/subscriber.h>  
+#include <message_filters/sync_policies/approximate_time.h>
+#include <message_filters/subscriber.h>
 #include "proj_api.h"
-#pragma comment(lib,"proj_i.lib")
+#pragma comment(lib, "proj_i.lib")
 
 #include <string>
 
-using namespace std; 
+using namespace std;
 using namespace message_filters;
 
-double startPoint[3] = {0,0,0};
+double startPoint[3] = {0, 0, 0};
 bool first_time = true;
 
-PointType pointSel;
+PointType pointSel,pointTmp;
 
 pcl::VoxelGrid<PointType> downSizeFilterCorner;
 
-
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
-
 
 pcl::VoxelGrid<PointType> downSizeFilterMap;
 
-
 std::ofstream outFile_groundTruth;
-
-
 
 ros::Publisher pubLaserCloudSurround;
 
@@ -103,19 +98,17 @@ bool newNavSatFix = false;
 bool newGL8GPTRAMsg = false;
 bool newGL8HeadingMsg = false;
 
-
 const int laserCloudWidth = 61;
 const int laserCloudHeight = 41;
 const int laserCloudDepth = 7;
 const int laserCloudNum = laserCloudWidth * laserCloudHeight * laserCloudDepth;
 
-int laserCloudCenWidth = laserCloudWidth/2;
-int laserCloudCenHeight = laserCloudHeight/2;
-int laserCloudCenDepth = laserCloudDepth/2;
+int laserCloudCenWidth = laserCloudWidth / 2;
+int laserCloudCenHeight = laserCloudHeight / 2;
+int laserCloudCenDepth = laserCloudDepth / 2;
 
 int laserCloudValidInd[125];
 int laserCloudSurroundInd[125];
-
 
 //参数配置
 static const double Ellipse_a = 6378137;
@@ -133,10 +126,10 @@ double OriginY = 3496650.000;
 double OffsetX = -1.1;
 double OffsetY = 1.03;
 
-double startPoint_x=0;
-double startPoint_y=0;
-double startPoint_z=0;
-double startYaw=0;
+double startPoint_x = 0;
+double startPoint_y = 0;
+double startPoint_z = 0;
+double startYaw = 0;
 
 pcl::PointCloud<PointType>::Ptr laserCloudCornerLast(new pcl::PointCloud<PointType>());
 pcl::PointCloud<PointType>::Ptr laserCloudSurfLast(new pcl::PointCloud<PointType>());
@@ -144,7 +137,7 @@ pcl::PointCloud<PointType>::Ptr laserCloudCornerStack(new pcl::PointCloud<PointT
 pcl::PointCloud<PointType>::Ptr laserCloudSurfStack(new pcl::PointCloud<PointType>());
 pcl::PointCloud<PointType>::Ptr laserCloudCornerStack2(new pcl::PointCloud<PointType>());
 pcl::PointCloud<PointType>::Ptr laserCloudSurfStack2(new pcl::PointCloud<PointType>());
-pcl::PointCloud<PointType>::Ptr laserCloudOri(new pcl::PointCloud<PointType>()); 
+pcl::PointCloud<PointType>::Ptr laserCloudOri(new pcl::PointCloud<PointType>());
 pcl::PointCloud<PointType>::Ptr coeffSel(new pcl::PointCloud<PointType>());
 pcl::PointCloud<PointType>::Ptr laserCloudSurround(new pcl::PointCloud<PointType>());
 pcl::PointCloud<PointType>::Ptr laserCloudSurround2(new pcl::PointCloud<PointType>());
@@ -163,14 +156,12 @@ pcl::PointCloud<PointType>::Ptr laserCloudSurround4(new pcl::PointCloud<PointTyp
 
 pcl::PointCloud<PointType>::Ptr laserCloudCubeCorner(new pcl::PointCloud<PointType>());
 pcl::PointCloud<PointType>::Ptr laserCloudCubeSurf(new pcl::PointCloud<PointType>());
-bool isLaserCloudCornerExisted[laserCloudNum]={false};
-bool isLaserCloudSurfExisted[laserCloudNum]={false};
+bool isLaserCloudCornerExisted[laserCloudNum] = {false};
+bool isLaserCloudSurfExisted[laserCloudNum] = {false};
 
+double coordinate[6] = {0};
 
-double coordinate[6]={0};
-
-bool systemInitiated=false;
-
+bool systemInitiated = false;
 
 // void laserCloudCornerLastHandler(const sensor_msgs::PointCloud2ConstPtr &laserCloudCornerLast2)
 // {
@@ -293,7 +284,7 @@ void keyboardControlHandler(const std_msgs::String::ConstPtr &controlInfoIn)
         }
       }
 
-  std::cout<<"Writing finished."<<std::endl;
+  std::cout << "Writing finished." << std::endl;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -308,50 +299,50 @@ void callback(const sensor_msgs::ImuConstPtr &msg, const sensor_msgs::NavSatFixC
 
   laserCloudCornerLast->clear();
   pcl::fromROSMsg(*laserCloudCornerLast2, *laserCloudCornerLast);
-  pcl::removeNaNFromPointCloud(*laserCloudCornerLast,*laserCloudCornerLast, indices);
+  pcl::removeNaNFromPointCloud(*laserCloudCornerLast, *laserCloudCornerLast, indices);
 
   laserCloudSurfLast->clear();
   pcl::fromROSMsg(*laserCloudSurfLast2, *laserCloudSurfLast);
-  pcl::removeNaNFromPointCloud(*laserCloudSurfLast,*laserCloudSurfLast, indices);
+  pcl::removeNaNFromPointCloud(*laserCloudSurfLast, *laserCloudSurfLast, indices);
 
-	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	//计算偏航角	
-	long double yaw_live = atan2(2 * (msg->orientation.w * msg->orientation.z + msg->orientation.x * msg->orientation.y), 1 - 2 * (msg->orientation.y * msg->orientation.y + msg->orientation.z * msg->orientation.z)); //惯导的偏航角
- 	yaw_live = yaw_live + 0.5 * M_PI;
-	if(yaw_live >= M_PI)
-		yaw_live -= 2 * M_PI;
-	if(yaw_live < -M_PI)
-		yaw_live += 2 * M_PI;  //车辆的偏航角
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //计算偏航角
+  long double yaw_live = atan2(2 * (msg->orientation.w * msg->orientation.z + msg->orientation.x * msg->orientation.y), 1 - 2 * (msg->orientation.y * msg->orientation.y + msg->orientation.z * msg->orientation.z)); //惯导的偏航角
+  yaw_live = yaw_live + 0.5 * M_PI;
+  if (yaw_live >= M_PI)
+    yaw_live -= 2 * M_PI;
+  if (yaw_live < -M_PI)
+    yaw_live += 2 * M_PI; //车辆的偏航角
 
-	//计算俯仰角
-	long double pitch_live = asin(2 * (msg->orientation.w * msg->orientation.y - msg->orientation.z * msg->orientation.x));
+  //计算俯仰角
+  long double pitch_live = asin(2 * (msg->orientation.w * msg->orientation.y - msg->orientation.z * msg->orientation.x));
 
-	//计算横滚角
-	long double roll_live = atan2(2 * (msg->orientation.w * msg->orientation.x + msg->orientation.y * msg->orientation.z) , 1 - 2 * (msg->orientation.x * msg->orientation.x + msg->orientation.y * msg->orientation.y));
+  //计算横滚角
+  long double roll_live = atan2(2 * (msg->orientation.w * msg->orientation.x + msg->orientation.y * msg->orientation.z), 1 - 2 * (msg->orientation.x * msg->orientation.x + msg->orientation.y * msg->orientation.y));
 
-	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	
-	//定位结果
-	double y = gps->latitude;
-	double x = gps->longitude;
-	double z = gps->altitude;
-	
-	// projPJ pj_latlong, pj_utm;
-	// if (!(pj_latlong = pj_init_plus("+proj=longlat +datum=WGS84")) )
-	// {
-	// 	printf("pj_init_plus error: longlat\n");
-	// 	exit(1);
-  //  	}
-	// if (!(pj_utm = pj_init_plus("+proj=utm +zone=51 +ellps=WGS84")) )
-	// {
-	// 	printf("pj_init_plus error: utm\n");
-	// 	exit(1);
-	// }
-	
-	// x *= DEG_TO_RAD;
-	// y *= DEG_TO_RAD;
-	
-	// int p = pj_transform(pj_latlong, pj_utm, 1, 1, &x, &y, NULL );
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+  //定位结果
+  double y = gps->latitude;
+  double x = gps->longitude;
+  double z = gps->altitude;
+
+  projPJ pj_latlong, pj_utm;
+  if (!(pj_latlong = pj_init_plus("+proj=longlat +datum=WGS84")))
+  {
+    printf("pj_init_plus error: longlat\n");
+    exit(1);
+  }
+  if (!(pj_utm = pj_init_plus("+proj=utm +zone=51 +ellps=WGS84")))
+  {
+    printf("pj_init_plus error: utm\n");
+    exit(1);
+  }
+
+  x *= DEG_TO_RAD;
+  y *= DEG_TO_RAD;
+
+  int p = pj_transform(pj_latlong, pj_utm, 1, 1, &x, &y, NULL);
 
   if (first_time)
   {
@@ -363,29 +354,48 @@ void callback(const sensor_msgs::ImuConstPtr &msg, const sensor_msgs::NavSatFixC
   }
   double x_live = x - startPoint[0];
   double y_live = y - startPoint[1];
-	double z_live = z - startPoint[2];
+  double z_live = z - startPoint[2];
 
-	// outf<< (gps->header.stamp) <<" "<<yaw_live<< " "<<pitch_live<<" "<<roll_live<<" "<<x_live<<" "<<y_live<<" "<<z_live<<std::endl;
-	std::cout<< (gps->header.stamp) <<" "<<yaw_live<< " "<<pitch_live<<" "<<roll_live<<" "<<x_live<<" "<<y_live<<" "<<z_live<<std::endl;
+
+  // outf<< (gps->header.stamp) <<" "<<yaw_live<< " "<<pitch_live<<" "<<roll_live<<" "<<x_live<<" "<<y_live<<" "<<z_live<<std::endl;
+  std::cout << (gps->header.stamp) << " " << yaw_live << " " << pitch_live << " " << roll_live << " " << x_live << " " << y_live << " " << z_live << std::endl;
 
   /////////////////////////
   /// 坐标变换部分还未完成。///
   /////////////////////////
   // 假设得到的输出是 laserCloudCornerLast
+  Eigen::Matrix3d rotation_matrix = Eigen::Matrix3d::Identity();
+  // Eigen::AngleAxisd rotation_vector(-roll_live, Eigen::Vector3d::UnitX()); 
+  // rotation_vector = rotation_vector * Eigen::AngleAxisd(-pitch_live, Eigen::Vector3d::UnitY());
+  // rotation_vector = rotation_vector * Eigen::AngleAxisd(-yaw_live, Eigen::Vector3d::UnitZ());
+
+  Eigen::AngleAxisd rotation_vector(yaw_live-1.57, Eigen::Vector3d::UnitZ());
+
+  rotation_matrix = rotation_vector.toRotationMatrix();
 
   int laserCloudCornerLastNum = laserCloudCornerLast->points.size();
   for (int i = 0; i < laserCloudCornerLastNum; i++)
   {
-
     pointSel = laserCloudCornerLast->points[i];
+    pointTmp.x = rotation_matrix(0, 0) * pointSel.x + rotation_matrix(0, 1) * pointSel.y + rotation_matrix(0, 2) * pointSel.z;
+    pointTmp.y = rotation_matrix(1, 0) * pointSel.x + rotation_matrix(1, 1) * pointSel.y + rotation_matrix(1, 2) * pointSel.z;
+    pointTmp.z = rotation_matrix(2, 0) * pointSel.x + rotation_matrix(2, 1) * pointSel.y + rotation_matrix(2, 2) * pointSel.z;
+    pointSel.x = pointTmp.x + x_live;
+    pointSel.y = pointTmp.y + y_live;
+    pointSel.z = pointTmp.z + z_live;
     laserCloudCornerStack2->push_back(pointSel);
   }
 
   int laserCloudSurfLastNum = laserCloudSurfLast->points.size();
   for (int i = 0; i < laserCloudSurfLastNum; i++)
   {
-
     pointSel = laserCloudSurfLast->points[i];
+    pointTmp.x = rotation_matrix(0, 0) * pointSel.x + rotation_matrix(0, 1) * pointSel.y + rotation_matrix(0, 2) * pointSel.z;
+    pointTmp.y = rotation_matrix(1, 0) * pointSel.x + rotation_matrix(1, 1) * pointSel.y + rotation_matrix(1, 2) * pointSel.z;
+    pointTmp.z = rotation_matrix(2, 0) * pointSel.x + rotation_matrix(2, 1) * pointSel.y + rotation_matrix(2, 2) * pointSel.z;
+    pointSel.x = pointTmp.x + x_live;
+    pointSel.y = pointTmp.y + y_live;
+    pointSel.z = pointTmp.z + z_live;
     laserCloudSurfStack2->push_back(pointSel);
   }
 
@@ -402,7 +412,7 @@ void callback(const sensor_msgs::ImuConstPtr &msg, const sensor_msgs::NavSatFixC
     centerCubeK--;
 
   // 边缘处理
-  if (1) 
+  if (1)
   {
     while (centerCubeI < 3)
     {
@@ -753,61 +763,55 @@ void callback(const sensor_msgs::ImuConstPtr &msg, const sensor_msgs::NavSatFixC
   }
   //==============================================================//
 
+  // (降采样滤波????????)
+  for (int i = 0; i < laserCloudSurroundNum; i++)
+  {
+    int ind = laserCloudSurroundInd[i];
 
+    laserCloudCornerArray2[ind]->clear();
+    downSizeFilterCorner.setInputCloud(laserCloudCornerArray[ind]);
+    downSizeFilterCorner.filter(*laserCloudCornerArray2[ind]);
 
-    // (降采样滤波????????)
+    laserCloudSurfArray2[ind]->clear();
+    downSizeFilterSurf.setInputCloud(laserCloudSurfArray[ind]);
+    downSizeFilterSurf.filter(*laserCloudSurfArray2[ind]);
+
+    pcl::PointCloud<PointType>::Ptr laserCloudTemp = laserCloudCornerArray[ind];
+    laserCloudCornerArray[ind] = laserCloudCornerArray2[ind];
+    laserCloudCornerArray2[ind] = laserCloudTemp;
+
+    laserCloudTemp = laserCloudSurfArray[ind];
+    laserCloudSurfArray[ind] = laserCloudSurfArray2[ind];
+    laserCloudSurfArray2[ind] = laserCloudTemp;
+  }
+
+  // 发布频率为 1Hz。
+  mapFrameCount++;
+  if (mapFrameCount >= mapFrameNum)
+  {
+    mapFrameCount = 0;
+
+    std::cout << "Publishing map cubes." << std::endl;
+
+    laserCloudSurround2->clear();
+
     for (int i = 0; i < laserCloudSurroundNum; i++)
     {
       int ind = laserCloudSurroundInd[i];
-
-      laserCloudCornerArray2[ind]->clear();
-      downSizeFilterCorner.setInputCloud(laserCloudCornerArray[ind]);
-      downSizeFilterCorner.filter(*laserCloudCornerArray2[ind]);
-
-      laserCloudSurfArray2[ind]->clear();
-      downSizeFilterSurf.setInputCloud(laserCloudSurfArray[ind]);
-      downSizeFilterSurf.filter(*laserCloudSurfArray2[ind]);
-
-      pcl::PointCloud<PointType>::Ptr laserCloudTemp = laserCloudCornerArray[ind];
-      laserCloudCornerArray[ind] = laserCloudCornerArray2[ind];
-      laserCloudCornerArray2[ind] = laserCloudTemp;
-
-      laserCloudTemp = laserCloudSurfArray[ind];
-      laserCloudSurfArray[ind] = laserCloudSurfArray2[ind];
-      laserCloudSurfArray2[ind] = laserCloudTemp;
+      *laserCloudSurround2 += *laserCloudCornerArray[ind];
+      *laserCloudSurround2 += *laserCloudSurfArray[ind];
     }
 
-    // 发布频率为 5Hz。
-    mapFrameCount++;
-    if (mapFrameCount >= mapFrameNum)
-    {
-      mapFrameCount = 0;
+    laserCloudSurround->clear();
+    downSizeFilterCorner.setInputCloud(laserCloudSurround2);
+    downSizeFilterCorner.filter(*laserCloudSurround);
 
-      std::cout<<"Publishing map cubes."<<std::endl;
-
-      laserCloudSurround2->clear();
-
-      for (int i = 0; i < laserCloudSurroundNum; i++)
-      {
-        int ind = laserCloudSurroundInd[i];
-        *laserCloudSurround2 += *laserCloudCornerArray[ind];
-        *laserCloudSurround2 += *laserCloudSurfArray[ind];
-      }
-
-      laserCloudSurround->clear();
-      downSizeFilterCorner.setInputCloud(laserCloudSurround2);
-      downSizeFilterCorner.filter(*laserCloudSurround);
-
-      sensor_msgs::PointCloud2 laserCloudSurround3;
-      pcl::toROSMsg(*laserCloudSurround, laserCloudSurround3);
-      laserCloudSurround3.header.stamp = gps->header.stamp;
-      laserCloudSurround3.header.frame_id = "camera_init";
-      pubLaserCloudSurround.publish(laserCloudSurround3);
-    }
-
-
-
-  
+    sensor_msgs::PointCloud2 laserCloudSurround3;
+    pcl::toROSMsg(*laserCloudSurround, laserCloudSurround3);
+    laserCloudSurround3.header.stamp = gps->header.stamp;
+    laserCloudSurround3.header.frame_id = "camera_init";
+    pubLaserCloudSurround.publish(laserCloudSurround3);
+  }
 }
 
 int main(int argc, char **argv)
@@ -815,9 +819,9 @@ int main(int argc, char **argv)
   ros::init(argc, argv, "gpsMapping");
   ros::NodeHandle nh;
 
-downSizeFilterCorner.setLeafSize(0.2, 0.2, 0.2);
-downSizeFilterSurf.setLeafSize(0.4, 0.4, 0.4);
-downSizeFilterMap.setLeafSize(0.6, 0.6, 0.6);
+  downSizeFilterCorner.setLeafSize(0.2, 0.2, 0.2);
+  downSizeFilterSurf.setLeafSize(0.4, 0.4, 0.4);
+  downSizeFilterMap.setLeafSize(0.6, 0.6, 0.6);
 
   outFile_groundTruth.open("/home/zhou/Desktop/test_groundtruth_gps.txt");
 
@@ -829,23 +833,20 @@ downSizeFilterMap.setLeafSize(0.6, 0.6, 0.6);
     laserCloudSurfArray2[i].reset(new pcl::PointCloud<PointType>());
   }
 
- 
-
-
   ros::Subscriber subControlInfo = nh.subscribe<std_msgs::String>("controlInfo", 1000, keyboardControlHandler);
 
   pubLaserCloudSurround = nh.advertise<sensor_msgs::PointCloud2>("/laser_cloud_surround", 1);
-  std::cout<<"Laser_cloud_surround published."<<std::endl;
+  std::cout << "Laser_cloud_surround published." << std::endl;
 
-  message_filters::Subscriber<sensor_msgs::Imu> sub1(nh,"/Inertial/imu/data", 100);
-	message_filters::Subscriber<sensor_msgs::NavSatFix> sub2(nh,"/Inertial/gps/fix", 100);
-	message_filters::Subscriber<sensor_msgs::PointCloud2> sub3(nh,"/laser_cloud_less_sharp", 10);
-  message_filters::Subscriber<sensor_msgs::PointCloud2> sub4(nh,"/laser_cloud_less_flat", 10);
+  message_filters::Subscriber<sensor_msgs::Imu> sub1(nh, "/Inertial/imu/data", 100);
+  message_filters::Subscriber<sensor_msgs::NavSatFix> sub2(nh, "/Inertial/gps/fix", 100);
+  message_filters::Subscriber<sensor_msgs::PointCloud2> sub3(nh, "/laser_cloud_less_sharp", 10);
+  message_filters::Subscriber<sensor_msgs::PointCloud2> sub4(nh, "/laser_cloud_less_flat", 10);
 
   typedef sync_policies::ApproximateTime<sensor_msgs::Imu, sensor_msgs::NavSatFix,
                                          sensor_msgs::PointCloud2, sensor_msgs::PointCloud2>
       MySyncPolicy;
-  Synchronizer<MySyncPolicy> sync(MySyncPolicy(1000), sub1, sub2, sub3, sub4); 
+  Synchronizer<MySyncPolicy> sync(MySyncPolicy(1000), sub1, sub2, sub3, sub4);
   sync.registerCallback(boost::bind(&callback, _1, _2, _3, _4));
 
   ros::MultiThreadedSpinner spinner(8);
@@ -853,7 +854,7 @@ downSizeFilterMap.setLeafSize(0.6, 0.6, 0.6);
 
   outFile_groundTruth.close();
 
-  std::cout<<laserCloudCenWidth<<'\t'<<laserCloudCenHeight<<'\t'<<laserCloudCenDepth<<'\n';
+  std::cout << laserCloudCenWidth << '\t' << laserCloudCenHeight << '\t' << laserCloudCenDepth << '\n';
 
   // 地图位置的图形化表示。
   //
